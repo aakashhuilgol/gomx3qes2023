@@ -1,0 +1,48 @@
+action off, on, warm_up, initiate, stand_by, cancle, set, cruise, brake, resume, moving, hold, pause;
+bool is_off, is_on, is_initiate, is_stand_by, is_set, is_cancle, is_cruise,is_hold,is_warm_up;
+
+
+int i = 0;
+transient int startCruiseSystem = 0;
+transient int reward = 0;
+
+property Prop1 = E(true U is_on);
+property Prop2 = E(true U is_initiate);
+property Prop3 = E(true U is_stand_by);
+property Prop4 = E(true U is_set);
+property Prop5 = E(true U is_hold);
+property Prop6 = E(true U is_off);
+property Prop7 = E(i <= 20 U is_cruise);
+property Prop8 = E((!is_on && !is_warm_up && !is_initiate) U is_set);
+property Prop9 = E((!is_on && !is_initiate && !is_set && !is_hold && !is_stand_by) U is_cruise);
+
+property PropCruiseReward = Xmin(S(reward), is_cruise); // Rmin(reward_structure, goal)
+property PropCruiseSystemCost = Xmin(S(startCruiseSystem), is_warm_up); // Rmin(reward_structure, goal)
+
+
+on {=  is_on = true =};
+do {
+:: when(i < 10) {= i++ =}; // ++i
+  warm_up {= startCruiseSystem = i =}
+:: when(i >= 10) break {= is_warm_up = true =}
+};
+initiate{=  is_initiate = true, is_warm_up = false, is_on = false,i++ =};
+alt{
+:: set {=  is_set = true,is_initiate = false, i+= 2 =}
+:: off {=  is_off = true,is_initiate = false =}; do {tau}
+};
+alt{
+:: stand_by {=  is_stand_by = true,is_set = false,i+=3 =}
+:: hold {=  is_hold = true,is_set = false =};
+  alt {
+  :: stand_by {=  is_stand_by = true,is_hold = false,i++ =}
+  :: off {=  is_off = true,is_hold = false =}; do {tau}
+  }
+  
+};
+alt {
+:: off {=  is_off = true,is_stand_by = false =}; do {tau}
+:: cruise {= is_cruise = true,is_stand_by = false, reward= i =}; do {cruise}
+  
+}  
+

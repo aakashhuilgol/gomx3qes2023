@@ -1,0 +1,256 @@
+const int lband2_len = 16;
+int(0..gmax)[] lband2 = [6172, 11742, 11914, 17484, 17750, 23320, 23776, 29346, 29859, 35429, 35769, 41339, 41549, 47119, 47276, 52846];
+
+const int lband3_len = 16;
+int(0..gmax)[] lband3 = [3491, 9061, 9245, 14815, 15112, 20682, 21165, 26735, 27217, 32787, 33096, 38666, 38862, 44432, 44587, 50157];
+
+const int sun_len = 22;
+int(0..gmax)[] sun = [0, 2088, 4097, 7594, 9601, 13101, 15105, 18608, 20609, 24115, 26113, 29622, 31618, 35129, 37122, 40636, 42626, 46144, 48130, 51651, 53634, 54000];
+
+const int uhf_len = 12;
+int(0..gmax)[] uhf = [3318, 3542, 8830, 9348, 14488, 15067, 20188, 20767, 25907, 26424, 31718, 31931];
+
+const int xband_len = 20;
+int(0..gmax)[] xband = [2993, 3426, 7741, 8152, 8603, 9203, 13374, 13949, 14355, 14933, 20138, 20692, 25884, 26476, 31616, 32201, 37454, 37723, 48773, 49242];
+
+//==================== PROPS =========================
+
+// property prop1 = Pmax(charge >= EMPTY U (x_count > 1 && l2_count+l3_count> 1 && done));
+//property prop2 = E(charge >= EMPTY U (x_count > 1 && l2_count+l3_count> 1 && done));
+property prop3 = Xmin(S(cost), done);
+// property prop5 = (S(cost), x_count > 0 && done);
+// property prop6 = E(charge >= EMPTY U done);
+
+//==================== START OF MODEL ===============
+
+const int C = 149760000; // in mJ
+const int EMPTY = (int)(C * 0.45); // 45%
+int(0..C) charge = (int)(C * 0.6); // start at 60%
+
+action load_update, sun_update, uhf_update, lband2_update, lband3_update, xband_update, finished; // Actions shared between battery and jobs/sun to update capacity
+
+// CHARGES
+const int bl = 2989; // in mW
+const int sun_charge = 5700; // in mW
+const int uhf_charge = 2630; // in mW
+const int lband_charge = 3863; // in mW
+const int xband_charge = 11945; // in mW
+const int ph_charge = 414; // in mW
+const int ph_time = 1200; // in seconds
+const int sl_time = 600; // in seconds
+const int Rl = 1; 
+const int Rx = 2; 
+
+// Helper variables
+int R = 0;
+int current_time; 
+bool lock;
+bool uhf_check, lband2_check, lband3_check, xband_check;
+int l2_count,l3_count,x_count;
+
+// Loads
+int sun_load;
+int uhf_load;
+int lband2_load;
+int lband3_load;
+int xband_load;
+
+clock gc;
+const int gmax = 15*60*60; // Maximum clock time, hours to seconds
+
+
+transient bool done;
+transient real cost;
+
+//====================== Linear_Battery ========================
+
+process LinearBattery()
+{
+   int last_time;
+   int last_load = bl;
+
+   do {
+     :: alt {
+       // when one value is updated (e.g. a job starts to preheat or job ended) calculate the updated SoC
+       :: invariant(charge >= EMPTY) sun_update {= charge = max(0, min(C, charge - last_load * (current_time - last_time))),
+                          last_load =  bl - sun_load + uhf_load + lband2_load + lband3_load + xband_load,
+                          last_time = current_time =}
+       :: invariant(charge >= EMPTY) uhf_update {= charge = max(0, min(C, charge - last_load * (current_time - last_time))),
+                          last_load =  bl - sun_load + uhf_load + lband2_load + lband3_load + xband_load,
+                          last_time = current_time =}  
+       :: invariant(charge >= EMPTY) lband2_update {= charge = max(0, min(C, charge - last_load * (current_time - last_time))),
+                          last_load =  bl - sun_load + uhf_load + lband2_load + lband3_load + xband_load, 
+                          last_time = current_time =} 
+       :: invariant(charge >= EMPTY) lband3_update {= charge = max(0, min(C, charge - last_load * (current_time - last_time))),
+                          last_load =  bl - sun_load + uhf_load + lband2_load + lband3_load + xband_load,
+                          last_time = current_time =}
+       :: invariant(charge >= EMPTY) xband_update {= charge = max(0, min(C, charge - last_load * (current_time - last_time))),
+                          last_load =  bl - sun_load + uhf_load + lband2_load + lband3_load + xband_load,
+                          last_time = current_time =}                                                    
+       // If the SoC goes below the allowed threshold stop. This ensures goal state is never reached
+       :: invariant(charge >= EMPTY) when(charge < EMPTY) stop
+       // If gmax (globall max time) has been reached it means the current path is a valid schedule. Last update of SoC and goal state reached
+       :: invariant(charge >= EMPTY) when(gc == gmax) finished {= charge = max(0, min(C, charge - last_load * (gmax - last_time)))=}; tau;with(done) stop
+     }
+   }
+}
+
+//===================== SUN ================================
+
+process Sun()
+{
+  int i;
+
+  do {
+    // If the clock has reached the next value of the list update the sun_load. if it is an even number the set sun_load to the sun_charge, 0 otherwise
+    :: invariant(gc <= sun[i]) when(gc >= sun[i]) {= sun_load = sun_charge * ((i+1) % 2), current_time = sun[i] =};
+    // Stop if end of list reached, otherwise continue
+    invariant(gc <= sun[i]) alt {
+      :: when(i < sun_len - 1) sun_update {= i++ =}
+      :: when(i == sun_len - 1) sun_update {= i++ =}; stop
+     }
+    }
+}
+
+//===================== UHF ================================
+
+process UHF()
+{
+  int i;
+  do{
+    // If in preheat time (20 mins) there is a UHF job start preheating, set uhf_load to ph_charge (preheat charge)
+    :: invariant(gc <= uhf[i]-ph_time) when(gc >= uhf[i]-ph_time) tau {= uhf_load = ph_charge , current_time = uhf[i] - ph_time =}; 
+    invariant(gc <= uhf[i]-ph_time) when(gc >= uhf[i]-ph_time) uhf_update;
+
+    // When it is time for the UHF job, start the jobs and update uhf_load
+    invariant(gc <= uhf[i]) when(gc >= uhf[i]) tau {= uhf_load = uhf_charge, current_time = uhf[i], uhf_check = true =};
+    invariant(gc <= uhf[i]) when(gc >= uhf[i]) uhf_update {= i++ =};
+
+    // When the UHF job finishes set the uhf_load to 0
+    invariant(gc <= uhf[i]) when(gc >= uhf[i]) tau {= uhf_load = 0, current_time = uhf[i], uhf_check = false =};
+    // Stop if end of list reached, otherwise continue
+    invariant(gc <= uhf[i]) alt {
+      :: when(i < uhf_len - 1 ) uhf_update {= i++ =}
+      :: when(i == uhf_len - 1 ) uhf_update {= i++ =}; stop
+    }
+  }
+}
+
+//===================== LBAND2 =============================
+
+process Lband2()
+{
+  int i;
+  action skip;
+  do{
+    alt{
+      // skip job
+      :: invariant(gc <= lband2[i]-ph_time-sl_time) when(gc >= lband2[i]-ph_time-sl_time) skip {= i++, cost = 5 =}; 
+      invariant(gc <= lband2[i]-ph_time-sl_time) alt {
+        :: when(i < lband2_len - 1 ) tau {= i++ =}
+        :: when(i == lband2_len - 1 ) tau {= i++ =}; stop
+      }
+      // take job, start preheating and slewing
+      :: invariant(gc <= lband2[i]-ph_time-sl_time) when(gc >= lband2[i]-ph_time-sl_time && lock == false && l2_count - l3_count < 2 && R < 4) tau {= lband2_load = ph_charge , 
+                                                         current_time = lband2[i] - ph_time-sl_time, lock = true, l2_count++ , R = R + Rx =}; 
+      invariant(gc <= lband2[i]-ph_time-sl_time) lband2_update;
+
+      // start job, update lband2_load
+      invariant(gc <= lband2[i]) when(gc >= lband2[i]) tau {= lband2_load = lband_charge, current_time = lband2[i],lband2_check = true =};
+      invariant(gc <= lband2[i]) lband2_update {= i++, cost = (((l2_count+l3_count+1)/(x_count+1))*((l2_count+l3_count+1)/(x_count+1)))+(((l2_count*l2_count)+(l3_count*l3_count)+1)/((l2_count*l3_count)+1)) =};
+      
+      // job ended, set lband2_load to ph_charge (cooldown charge)
+      invariant(gc <= lband2[i]) when(gc >= lband2[i]) tau {= lband2_load = ph_charge, current_time = lband2[i], lband2_check = false=};
+      invariant(gc <= lband2[i]) lband2_update ;
+      invariant(gc <= lband2[i] + sl_time) when(gc >= lband2[i] + sl_time) tau {= lband2_load = 0, current_time = lband2[i] + sl_time , lock = false =};
+      // Stop if end of list reached, otherwise continue
+      invariant(gc <= lband2[i] + sl_time) alt {
+        :: when(i < lband2_len - 1 ) lband2_update {= i++ =}
+        :: when(i == lband2_len - 1 ) lband2_update {= i++ =}; stop
+      }
+    }
+  }
+}
+
+//===================== LBAND3 =============================
+
+process Lband3()
+{
+  int j;
+  action skip;
+  do{
+    alt{
+      // skip job
+      :: invariant(gc <= lband3[j]-ph_time-sl_time) when(gc >= lband3[j]-ph_time-sl_time)skip {= j++, cost = 5 =}; 
+      invariant(gc <= lband3[j]-ph_time-sl_time) alt {
+        :: when(j < lband3_len - 1 ) tau {= j++ =}
+        :: when(j == lband3_len - 1 ) tau {= j++ =}; stop
+      } 
+      // take job, start preheating and slewing
+      :: invariant(gc <= lband3[j]-ph_time-sl_time) when(gc >= lband3[j]-ph_time-sl_time && lock == false && l3_count - l2_count <  2 &&  R < 4)
+             tau {= lband3_load = ph_charge , current_time = lband3[j] - ph_time - sl_time , lock = true, l3_count++,  R = R + Rx =};
+      invariant(gc <= lband3[j]-ph_time-sl_time) lband3_update;
+
+      // start the job, update lband3_load
+      invariant(gc <= lband3[j]) when(gc >= lband3[j]) tau {= lband3_load = lband_charge, current_time = lband3[j], lband3_check = true =};
+      invariant(gc <= lband3[j]) lband3_update {= j++, cost = (((l2_count+l3_count+1)/(x_count+1))*((l2_count+l3_count+1)/(x_count+1)))+(((l2_count*l2_count)+(l3_count*l3_count)+1)/((l2_count*l3_count)+1)) =};
+
+      // job ended, set lband3_load to ph_charge (cooldown charge)
+      invariant(gc <= lband3[j]) when(gc >= lband3[j]) tau {= lband3_load = ph_charge, current_time = lband3[j], lband3_check = false =};
+      invariant(gc <= lband3[j]) lband3_update;
+      invariant(gc <= lband3[j] + sl_time) when(gc >= lband3[j] + sl_time) tau {= lband3_load = 0, current_time = lband3[j] + sl_time  , lock = false =};
+      // Stop if end of list reached, otherwise continue
+      invariant(gc <= lband3[j] + sl_time) alt {
+        :: when(j < lband3_len - 1 ) lband3_update {= j++ =}
+        :: when(j == lband3_len - 1 ) lband3_update {= j++ =}; stop
+      }
+    }
+  }
+}
+
+//===================== XBAND =============================
+
+process Xband()
+{
+  int i;
+  action skip;
+  do{
+    alt{
+      // skip job
+      :: invariant(gc <= xband[i]-ph_time-sl_time) when(gc >= xband[i]-ph_time-sl_time) skip {= i++, cost = 5 =}; 
+      invariant(gc <= xband[i]-ph_time-sl_time) alt {
+        :: when(i < xband_len - 1 ) tau {= i++ =}
+        :: when(i == xband_len - 1 ) tau {= i++ =}; stop
+      }
+      // take job, start preheating and slewing
+      :: invariant(gc <= xband[i]-ph_time-sl_time) when(gc >= xband[i]-ph_time-sl_time && lock == false && R >= Rl ) tau {= xband_load = ph_charge , 
+                                                         current_time = xband[i] - ph_time-sl_time , lock = true , R = R - Rl, x_count++ =}; 
+      invariant(gc <= xband[i]-ph_time-sl_time) xband_update;
+
+      // start the job, update xband_load
+      invariant(gc <= xband[i]) when(gc >= xband[i]) tau {= xband_load = xband_charge, current_time = xband[i], xband_check = true =};
+      invariant(gc <= xband[i]) xband_update {= i++ =};
+      
+      // job ended, set xband_load to ph_charge (cooldown charge)
+      invariant(gc <= xband[i]) when(gc >= xband[i]) tau {= xband_load = ph_charge, current_time = xband[i], xband_check = false =};
+      invariant(gc <= xband[i]) xband_update;
+      invariant(gc <= xband[i] + sl_time) when(gc >= xband[i] + sl_time) tau {= xband_load = 0, current_time = xband[i] + sl_time , lock = false =};
+      // Stop if end of list reached, otherwise continue
+      invariant(gc <= xband[i] + sl_time) alt {
+        :: when(i < xband_len - 1 ) xband_update {= i++ =}
+        :: when(i == xband_len - 1 ) xband_update {= i++ =}; stop
+      }
+    }
+  }
+}
+
+//===================== Parallel ==========================
+
+par{
+  ::Lband2()
+  ::Lband3()
+  ::Xband()
+  ::Sun()
+  ::UHF()
+  ::LinearBattery()
+  }

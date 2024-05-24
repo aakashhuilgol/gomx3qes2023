@@ -1,0 +1,88 @@
+# Satellite modest model
+
+## Overview 
+For the model we created different processes for each of the jobs, the sun and the battery.
+In total we have 6 processes, *Sun()*, *Linear_Battery()*, *Lband2()*, *Lband3()*, *Xband()*, *UHF()*.
+Unlike Lband jobs the Xband jobs were merged into one process with a single array since the duration do not overlap and there is not much difference.
+In the entirety of the model all the time/date values are in seconds where 0 being the start date (2016 March 20 21:00) and the rest being the difference from that time.
+A note that has to be made is that our initial state of the battery is 80% while the lower bound is 40%.
+Changing the initial state of the battery or the lower bound would change the resulting schedule but would still be correct.
+
+### Battery
+Each of the processes has a common action with the Linear_Battery that will signal that a change in the load has taken place.
+If at any point the SoC has reached a level that below the given threashhold the Linear Battery will stop and the goal will never be reached.
+Moreover, once the clock has reached the gmax it will make a final calculation of the SoC and will go to the goal state.
+gmax being the end date - start date, in seconds.
+
+### Jobs
+The approach for every job type (xband, lband, uhf) is the same
+Every process has its own array containing the start date followed by the end date of every job.
+Also, it has an index indicating the next possible value or the end date if it has taken a job.
+
+At the time of the next job minus the preheat/slewing time the process has to make a choice.
+Either take the job (and start preheating/slewing) or skip it.
+The exception to this is the UHF job which will always have to be taken.
+Moreover, since a UHF job can be taken at the same time as an Xband or Lband we do not need to consider whether another type of job is on-going.
+
+For the Lband and Xband type of jobs we have implemented a simple boolean lock which will guarantee that only one out of the Xband or Lband2 or Lband3 jobs run at the same time.
+This check was added in the guards of taking an Lband or Xband job by simply checking if lock is false (unlocked).
+Once a job starts preheating it will set the lock to true (locked) and back to false (unlocked) once it has cooldowned.
+
+### Sun
+For the sun we used the same approach with the difference that there is no preheat, no cooling down and no skipping.
+Furthermore when extracting the sun windows from the csv data we also consider 'incomplete windows'. 
+Meaning if the start time of the sun was before the our start date, the sun window would start from time 0.
+ 
+## Heuristics
+
+### Assumptions and Abstractions
+As for every model we do not want to precicely model every detail but only what is of interest.
+This reduces the overall complexity and makes finding a suitable schedule less time consuming.
+
+1. The sun charge is set to 5700mW which is the lower bound.
+By taking the worst case scenario we know the battery will not run out.
+2. Xband and Lband jobs will always require (10+20) slewing plus warmup time and need to fully cooldown.
+Instead of optimizing the movement of the satellite when it changes attitude we have opted to simplify it by assuming the worst case.
+3. As per one of the requirements the satellite only takes a job if it fills the entire job window.
+
+### Job balance and Cost function
+One of the requirements is to keep a good balance between different jobs
+Firstly we need to keep a balance between Xband and Lband jobs, ensuring the satellite does not take too many Lband jobs and run out of memory.
+Achieving this was done by having a ratio that will be added to the guards of taking and Lband or Xband job.
+We have a variable named R which will keep track of our ratio.
+Whenever we take an Lband job we increment R by 2 and whenever we take an Xband job we decrement by 1.
+The different values are used to indicate that we would prefer two Xbands for every Lband.
+
+In order to take an Xband we have a guard R > 0.
+This ensures that we can only take an Xband if we have taken an Lband before (have data to downlink).
+On the other hand, to take an Lband we have a guard R < 4.
+This guard will ensure that we cannot take too many Lband jobs in a row while having some breathing space for different combinations of Lband and Xband jobs.
+
+Furthermore, we would like to keep the memory usage (Lband-Xband ratio) low and keep a balance between Lband2 and Lband3.
+To achieve this we have a cost function that adds cost whenever we take an Lband job.
+
+(((l2_count+l3_count+1)/(x_count+1))*((l2_count+l3_count+1)/(x_count+1)))+(((l2_count*l2_count)+(l3_count*l3_count)+1)/((l2_count*l3_count)+1))
+where l2_count, l3_count, x_count are the number of times we have taken an Lband2, Lband3, Xband jobs respectively.
+To visualise the equation see 'cost.png'
+![cost.png](cost.png)
+
+The cost function can be simplified to Cost() = (Lband-Xband ratio)^2 + (Lband2-Lband2 ratio)
+The worse the balance of Lband-Xband and Lband2-Lband3 the higher the cost.
+The first part of the Cost function is raised to the power of 2 to give more weight to keeping a good balance between Xband-Lband.
+
+For skipping a job we decided to hardcode it as a cost of 5.
+We unsuccessfully tried to have the cost of skipping a job as the inverse of the previously mentioned cost function.
+
+## Schedule produced
+To confirm the performance of our model we made a checker that will check the lowest cost property and create a graph presenting the picked schedule and the battery charge.
+
+The schedule can be seen in the jobs_picked.png file with the orange box indicating the preheat+slewing and cooldown time, the gray box the jobs not scheduled and the blue box the scheduled jobs.
+![jobs_picked.png](jobs_picked.png)
+
+The schedule produced is safe, good and non-trivial.
+It is safe since we do not exceed the lower bound of 40% of the max capacity of the battery.
+Good because it keeps a good balance between Lband2, Lband3 and Xband jobs while making sure to always take every UHF job.
+Lastly, it is non-trivial since it takes jobs and not skipping all of them
+
+The battery SoC precentage throughout the duration of the schedule can be seen in the charge.png file
+![charge.png](charge.png)

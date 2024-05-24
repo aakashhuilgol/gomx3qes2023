@@ -1,0 +1,42 @@
+action off, on, warm_up, cruising, quick, cruise;
+bool is_off, is_on, is_done, is_cruised;
+
+
+int i = 0;
+int j = 0;
+int w = 0;
+transient int reward = 0;
+transient int crcost = 0;
+
+property Prop1 = E(true U is_on);
+property Prop2 = E(true U is_done);
+property Prop3 = E(true U is_cruised);
+
+property PropCruiseReward1 = Xmin(S(reward), is_off); // Rmin(reward_structure, goal)
+property PropCruiseReward2 = Xmin(S(crcost), is_cruised); // Rmin(reward_structure, goal)
+
+
+
+do{
+    :: when(i < 100) {= i++ =};
+    on {= is_on = true =};
+    alt{
+        :: warm_up {= i ++=}; do {
+            ::when (w < 20) {= w++ =};
+            warm_up
+            ::when(w>=20) break
+        }
+        :: cruise {= j++=};
+        alt {
+            :: do {
+                ::when (j < 40) {= =};
+                cruising {= j++=}
+                ::when(j >= 40) break {= is_cruised= true, crcost=j =}
+            }
+            :: quick {= j += 5 =}
+        }
+        
+    }
+
+    :: when(i >= 100) {= is_off= j >= 250,reward=j, is_done= j > 250,is_on=false =}; off; do {tau}
+}

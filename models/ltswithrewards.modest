@@ -1,0 +1,38 @@
+// program in slides with while loop, of i<3
+
+action inc, done,enod;
+
+int i = 0;
+int j = 0;
+bool is_done;
+bool is_check;
+
+transient int reward; //special variables that are annotations, keep them appearing
+
+
+//property Prop1 = E(i<=3 U is_done);
+//property Prop2 = E(true U is_done);
+property Prop3 = E(<>  is_done);
+
+
+//property Prop1ForMcsta = Pmax(i<=2 U is_done);
+//property Prop2ForMcsta = Pmax(true U is_done);
+//property Prop3ForMcsta = Pmax(<>  is_done); //same as prop2, so doesnt show
+
+
+property PropReward = Xmin(S(reward),is_done);
+property PropReward1 = Xmin(S(reward),is_done && is_check);
+ //Rmin(reward_structure,goal)
+ //Every transition (S), check reward
+
+
+do{
+ :: when(i<1000000)  {= i++, j=i =}; // if we do i++ and j=i
+ // in the same line, for j it would take old value of 
+ //i which is 0, so i=1 and j=0
+    inc {= reward = 1 =}
+:: when(i>=1000000) break
+}; 
+alt{::done {= is_done = true, reward = 2 =}
+::enod {= is_check = true=}};
+do {tau} //fix deadlock

@@ -1,0 +1,58 @@
+#Model checker
+## Model checker’s diagnostic trace format
+First print 'Loading model from "<model>.py"... done' if the model was loaded successfully (additional output)
+For each property:
+  print the time taken to evaluate the property (additional output)
+  print property.name ':' True|False if reachability or <cost>|infinity if minimum reward
+  print path if True|<cost> (path format = [<state>, <transition>, <state>, <transition>, ..., <state>])
+  print empty line (additional output)
+
+## Expected results
+property Prop2 = E(true U is_done);
+cruising_with_car.py output:
+
+Done in 2.689 seconds
+Prop2: True
+['(is_off = False, is_on = False, is_done = False, is_cruised = False, i = 0, j = 0, w = 0, Main_location = 0)', 'τ', '(is_off = False, is_on = False, is_done = False, is_cruised = False, i = 1, j = 0, w = 0, Main_location = 3)', 'on', '(is_off = False, is_on = True, is_done = False, is_cruised = False, i = 1, j = 0, w = 0, Main_location = 4)', 'warm_up' 
+...
+'τ', '(is_off = True, is_on = False, is_done = True, is_cruised = False, i = 100, j = 252, w = 20, Main_location = 1)']
+
+property PropReward = Xmin(S(reward),is_done);
+ltswithrewards.py output:
+
+Done in 19.707 seconds
+PropReward: 1000002
+['(i = 0, j = 0, is_done = False, is_check = False, Main_location = 0)', 'τ', '(i = 1, j = 0, is_done = False, is_check = False, Main_location = 3)', 'inc', '(i = 1, j = 0, is_done = False, is_check = False, Main_location = 0)', 'τ', '(i = 2, j = 1, is_done = False, is_check = False, Main_location = 3)',
+...
+'done', '(i = 1000000, j = 999999, is_done = True, is_check = Fal
+se, Main_location = 2)']
+
+property PropReward1 = Xmin(S(reward),is_done && is_check);
+ltswithrewards.py output:
+
+Done in 16.615 seconds
+PropReward1: infinite
+
+## Implementation description 
+### Reachability-BFS
+fucntion named 'checkBFS(prop)' where prop is the current property to check
+
+#### Data structures
+We use a set 'visited' to keep track of the visited states, a list 'queue' to keep track of the new states to visit and a dictionary 'parent' which maps the hashed value of the parent to a tuple which contains the child and the transition from parent to child.
+
+Once we reach our goal we loop through all the parent states until we reach the initial state appending the states and transitions to a list 'path' which we then return
+
+The BFS implementation follows the pseudo code in the lecture notes.
+## Cost-Dijkstra
+fucntion named 'checkCost(prop)' where prop is the current property to check
+
+As recommended by the project manual we use a CostState object that can store the cost and the state.
+We use a heap queue 'queue' which stores CostState objects where the cost functions as the priority, a dictionary 'table' which maps the hash of a state to a tuple (parent, minimum_total_cost, transitions) and a set 'visited' to keep track of the visited states so that it is able to recognize newly discovered states to add to 'table' 
+
+Once we reach our goal we loop through all the parent states until we reach the initial state appending the states and transitions to a list 'path' which we then return
+
+The Dijkstra implementation follows the pseudo code in the lecture notes.
+
+## External sources
+heapq with example of heapq priority queue
+https://docs.python.org/3/library/heapq.html

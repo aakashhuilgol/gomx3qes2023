@@ -1,0 +1,54 @@
+# Kinetic battery
+
+## Supplementary files
+For the third part a number of supplementary files are privided.
+
+### Helper files
+- _schedule.pkl_ is several python lists stored as a pickle file. Made by checker.py (min reward function), used by schedule.py.
+- _schedule.py_ is a python script that uses the schedule.pkl file to load the jobs that were scheduled in the linear battery model.
+The script produces the _jobs_picked.png_, _charge.png_ and prints the modest array that will be used in schedule.modest to confirm the schedule.
+- _run_scheduler.sh_ is a bash script which runs all the commands from start to finish. 
+First a prompt ([y/N]) will appear to check if the user wants to export model.modest to the python file and run the checker on the file. 
+Then a python script is run (_schedule.py_) to make a graph out of the scheduled jobs.
+Then from these scheduled jobs the ``modest modes`` command is done to export the trace using the kinetic battery.
+Lastly, from the result of the trace a graph is made (_schedule.png_) to show the SoC of the kinetic battery.
+This is made to automate the process of changing the values of the possible jobs to producing a schedule and verifying the result.
+However, gmax still needs to be updated manually.
+- _schedule.csv_ consists of trace of ``modest modes`` and is used by _graph.py_ which produces the _schedule.png_ file.
+- _graph.py_ is a python script that uses the schedule.csv file to generate the final graph of a, b and SoC, named _schedule.png_. Furthermore, when this graph finishes it will display in stdout whether well 'a' has dipped below the safe threshold or not.
+
+### Images
+- _schedule.png_ is the graph showing the SoC throughout the duration of the schedule as well as the *a* and *b* values
+- _schedule_fst_attempt.png_ is the graph showing the SoC, *a* and *b* of the first attempt with the kinetic battery.
+- _charge.png_ is the graph showing the SoC in the linear battery model, created by schedule.py 
+- _jobs_picked.png_ is the graph showing which jobs are taken as well as the sun, created by schedule.py
+
+
+## Kinetic battery
+For this part we replaced the linear battery of the seconds part with the kinetic battery provided on canvas.
+Furthermore, the arrays were changed to only the scheduled jobs from the model with the linear battery.
+For this reason the skip actions were all removed from each process since we do not skip any of the scheduled jobs.
+A few more variables were removed since they were not necessary/used (e.g. lock, cost).
+Lastly, we updated the rate of change of the battery to the correct values (background_load + lband2_load + ...).
+
+To get the scheduled jobs from part two, we had to modify the checker.
+When the path from the minimum reward function returned it would check which jobs were scheduled and store it as an array in the form of a pickle list.
+This was done by checking certain boolean values that we added to our model which indicate whether a jobs is ongoing.
+Then running the _schedule.py_ file it would print in stdout the scheduled jobs as a modest array.
+
+## Attempts
+For the first attempt the checker did not produce a safe schedule.
+This is because while the SoC did not go below the 40% threshold, well 'a' did (20%) as can be seen below.
+![schedule_fst_attempt.png](schedule_fst_attempt.png)
+
+To fix this issue we decided the change the lower threshhold of the linear battery model to 45%.
+This extra 5% would ensure that the linear battery model is more conservative and the kinetic battery does not go below the threshhold.
+This indeed fixed the issue and in the final schedule well 'a' does not go below the given threshold.
+![schedule.png](schedule.png)
+
+## Final remarks
+To test checker.py, model.modest and schedule.modest in one go you can run _run_schedule.sh_.
+This will should take no more than 20 mins.
+To produce a schedule of a different duration, the variable 'gmax' has to be changed in both 'schedule.modest' and 'model.modest' files, where gmax is the number of hours in seconds.
+While this will produce a correct schedule the graphs generated will also have to be modified to display the correct values.
+For the graphs the matplotlib library was used therefore it will be required installing the dependancies in _requirements.txt_ file.

@@ -1,0 +1,28 @@
+action drop, bounce, catch_ball, flump;
+action ended;
+bool is_flump;
+bool is_bounce;
+bool is_catch;
+transient int cost = 0;
+
+property Prop5 = E(!is_catch U is_flump);
+property Prop1 = E<>(is_flump);
+property Prop2 = E(true U is_bounce);
+//property PropReward = Xmin(S(cost+2), is_flump);
+property Prop4 = E(true U is_flump && is_bounce);
+property Prop6 = E((!is_catch && !is_bounce) U is_flump);
+
+/*property Prop3 = E(true U (is_bounce || is_flump));
+property Prop4 = E(true U (is_bounce && is_flump));
+property Prop5 = E(!is_catch U is_flump);
+*/
+
+do {
+    drop;
+    alt {
+        :: bounce {= is_bounce = true , is_catch = false , cost = 1 =}
+        :: flump {= is_flump = true , is_bounce = false =}; do { tau }
+    };    
+    catch_ball {= is_catch = true , is_bounce = false =}
+}
+

@@ -1,0 +1,22 @@
+action a,b,c,d,e;
+bool is_l1,is_l3;
+clock x,y,z;
+
+property prop1 = E(<>is_l1);
+property prop2 = E(<>(is_l1 && y==0));
+property prop3 = E(<>(is_l3 && x >=1));
+property prop4 = E(<>(is_l1 && z==1));
+
+
+
+alt{
+    ::when(x<=1) a {= is_l1 = true =}
+    ::when(x<=1) b {= y=0 =} ;
+    alt{
+        ::invariant(y<=0) when(x>=1) c {= is_l1=true , x=0 =}
+        ::invariant(y<=0) d {=is_l3=true, x=0=}; 
+        invariant(y<=0) e {= is_l1 =true , is_l3=false=}
+    }
+}
+
+
